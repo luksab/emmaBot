@@ -1,5 +1,7 @@
 use crate::application::interaction::{Interaction, InteractionResponseType};
 use anyhow::anyhow;
+use config::Config;
+use rand::seq::SliceRandom;
 use serenity::model::application::command::Command;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
@@ -10,7 +12,7 @@ use shuttle_secrets::SecretStore;
 use sqlx::{Executor, PgPool};
 use tracing::{error, info};
 
-// mod config;
+mod config;
 
 struct Bot;
 
@@ -23,56 +25,54 @@ struct UserIDGuildID {
 #[async_trait]
 impl EventHandler for Bot {
     async fn message(&self, ctx: Context, msg: Message) {
-        if msg.content == "!hello" {
-            if let Err(e) = msg.channel_id.say(&ctx.http, "world!").await {
-                error!("Error sending message: {:?}", e);
-            }
-        } else if msg.content == "!vcping" {
-            let guild_id = msg.guild_id.unwrap();
-            // let guild = guild_id.to_partial_guild(&ctx.http).await.unwrap();
-            let user_id = msg.author.id;
-            let user_id_exists: Option<UserIDGuildID> =
-                sqlx::query_as("SELECT * FROM UserIDGuildID WHERE user_id = $1 AND guild_id = $2")
-                    .bind(user_id.0 as i64)
-                    .bind(guild_id.0 as i64)
-                    .fetch_optional(&ctx.data.read().await.get::<State>().unwrap().pool)
-                    .await
-                    .unwrap();
+        // check that I didn't sent the message
+        if msg.author.bot {
+            return;
+        }
+        let jokes = ctx.data.read().await.get::<Config>().unwrap().jokes.clone();
 
-            // error!("user_id_guild_id_map: {:?}", user_id_guild_id_map);
-
-            // add user to map, if they are not already in it
-            // remove user from map, if they are already in it
-            if user_id_exists.is_none() {
-                sqlx::query("INSERT INTO UserIDGuildID (user_id, guild_id) VALUES ($1, $2)")
-                    .bind(user_id.0 as i64)
-                    .bind(guild_id.0 as i64)
-                    .execute(&ctx.data.read().await.get::<State>().unwrap().pool)
+        for joke in jokes {
+            let matches = joke.regex.captures(&msg.content).unwrap();
+            if let Some(matches) = matches {
+                // replace --[number]-- with the corresponding capture group
+                let mut message = joke
+                    .message
+                    .choose(&mut rand::thread_rng())
+                    .unwrap()
+                    .to_owned();
+                for (i, capture) in matches.iter().enumerate() {
+                    if let Some(capture) = capture {
+                        message = message.replace(&format!("--[{}]--", i), capture.as_str());
+                    }
+                }
+                // replace --[nickname]-- with the nickname of the user
+                let nickname = msg
+                    .guild_id
+                    .unwrap()
+                    .member(&ctx.http, msg.author.id)
+                    .await
+                    .unwrap()
+                    .nick
+                    .unwrap_or(msg.author.name.clone());
+                message = message.replace("--[nickname]--", &nickname);
+                // replace --[username]-- with the username of the user
+                message = message.replace("--[username]--", &msg.author.name);
+                // replace --[guild]-- with the name of the guild
+                let guild = msg
+                    .guild_id
+                    .unwrap()
+                    .to_partial_guild(&ctx.http)
                     .await
                     .unwrap();
-                // send message to user
-                if let Err(e) = msg
-                    .channel_id
-                    .say(&ctx.http, "You have been added to the ping list!")
-                    .await
-                {
-                    error!("Error sending message: {:?}", e);
-                }
-            } else {
-                sqlx::query("DELETE FROM UserIDGuildID WHERE user_id = $1 AND guild_id = $2")
-                    .bind(user_id.0 as i64)
-                    .bind(guild_id.0 as i64)
-                    .execute(&ctx.data.read().await.get::<State>().unwrap().pool)
-                    .await
-                    .unwrap();
-                // send message to user
-                if let Err(e) = msg
-                    .channel_id
-                    .say(&ctx.http, "You have been removed from the ping list!")
-                    .await
-                {
-                    error!("Error sending message: {:?}", e);
-                }
+                message = message.replace("--[guild]--", &guild.name);
+                // replace --[channel]-- with the name of the channel
+                let channel = msg.channel_id.to_channel(&ctx.http).await.unwrap();
+                message = message.replace(
+                    "--[channel]--",
+                    &channel.guild().map(|c| c.name).unwrap_or("DM".to_string()),
+                );
+                msg.channel_id.say(&ctx.http, message).await.unwrap();
+                break;
             }
         }
     }
@@ -92,8 +92,6 @@ impl EventHandler for Bot {
                     .fetch_optional(&ctx.data.read().await.get::<State>().unwrap().pool)
                     .await
                     .unwrap();
-
-                    // error!("user_id_guild_id_map: {:?}", user_id_guild_id_map);
 
                     // add user to map, if they are not already in it
                     // remove user from map, if they are already in it
@@ -153,7 +151,7 @@ impl EventHandler for Bot {
         let number_of_users_in_channel = match new.channel_id {
             Some(channel_id) => match channel.members(&ctx.cache).await {
                 Ok(members) => members.len(),
-                Err(e) => {
+                Err(_) => {
                     // get members from api
                     let channel = channel_id.to_channel(&ctx.http).await.unwrap();
                     let channel = channel.guild().unwrap();
@@ -304,6 +302,8 @@ impl EventHandler for Bot {
         })
         .await
         .unwrap();
+
+        info!("Slash commands registered: {:?}", commands);
     }
 }
 
@@ -338,10 +338,12 @@ async fn serenity(
         | GatewayIntents::GUILD_VOICE_STATES;
 
     let state = State { pool };
+    let config = config::load_config();
 
     let client = Client::builder(&token, intents)
         .event_handler(Bot)
         .type_map_insert::<State>(state)
+        .type_map_insert::<Config>(config)
         .await
         .expect("Err creating client");
 

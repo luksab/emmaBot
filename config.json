@@ -3,7 +3,7 @@
     "jokes": [
         {
             "name": "creativity",
-            "regex": "(?:^| |\\.)(i(?:['`´‘’]?m| am))(?: \\w+){0,2} (?:un|not (?:\\w+ ){0,2})creative",
+            "regex": "(?i)(?:^| |\\.)(i(?:['`´‘’]?m| am))(?: \\w+){0,2} (?:un|not (?:\\w+ ){0,2})creative",
             "message": [
                 "Just press f3+f4 to hop into creative mode then.",
                 "You can just press f3+f4."
@@ -11,10 +11,68 @@
         },
         {
             "name": "hi-dad",
-            "regex": "(?:^| |\\.)(i(?:['`´‘’]?m| am))(?! (?:i(?:['`´‘’]?m| am) ))((?: \\w+){1,3})(?:\\.|\\!|$)",
+            "regex": "(?i)(?:^| |\\.)(i(?:['`´‘’]?m| am))(?! (?:i(?:['`´‘’]?m| am) ))((?: \\w+){1,3})(?:\\.|\\!|$)",
             "message": [
                 "Hello--[2]--! --[1]-- dad.",
                 "Hi,--[2]--! I thought you were --[nickname]--."
+            ]
+        },
+        {
+            "name": "cringe",
+            "regex": "(?i)hey+ kitten",
+            "message": [
+                "You are cringe",
+                "aaaachoooo \nsorry I'm alergic to cringe",
+                "**weeeooo weeeeoo** cringe detected 🚨"
+            ]
+        },
+        {
+            "name": "yo mom",
+            "regex": "(?i)((?:yo|your) (?:mom|mama))",
+            "message": [
+                "--[1]-- is so old, alarms went off when she stepped outside of the museum.",
+                "--[1]-- so fat she sat on a rainbow and skittles popped out.",
+                "--[1]-- is so dumb, she tried to hike Mountain Dew.",
+                "--[1]-- is so old, they didn’t teach history when she was in school.",
+                "--[1]-- is so American, she deep-fries her toothpaste before brushing her teeth.",
+                "--[1]--’s purse is so disorganized, people mistake it for the garbage dump.",
+                "--[1]-- is so dumb, she plays pool in her swimsuit.",
+                "--[1]-- is so dumb, she stared at a carton of orange juice all morning because on the side it said “concentrate”.",
+                "--[1]-- is so dumb, she visited the dentist’s office to try and buy a Bluetooth speaker.",
+                "--[1]-- is so good at making a deal, the devil sold his soul to her.",
+                "--[1]-- is so dumb, she thought “quarterback” was a type of refund.",
+                "--[1]-- is so dumb, she brought a tape measure to bed to try and calculate how long she slept.",
+                "--[1]-- is so dumb, she thought Twitter was a social media site only for birds.",
+                "--[1]-- is so dumb, she bought Twitter.",
+                "--[1]-- is so fat, when she skips a meal, the stock market drops.",
+                "--[1]--’s house is so small, the large pizza she ordered can only be eaten outside.",
+                "--[1]-- is so old, her birth certificate displays her birthdate in Roman numerals.",
+                "--[1]-- is so scary, she made One Direction turn in the opposite direction.",
+                "--[1]-- is so old, her birth certificate has “expired” stamped on it.",
+                "--[1]-- is so dumb, she thought Eminem was a candy wrapper.",
+                "--[1]-- is so dumb, when you told her to make up her mind, she went to the bathroom and put eyeshadow on her forehead.",
+                "--[1]-- is so dumb, she thought Starbucks was a kind of money.",
+                "--[1]-- is so dumb she thought Dunkin’ Donuts was a new basketball team.",
+                "--[1]-- is so dumb, when the weatherman said it was chilly outside, she grabbed a bowl and spoon to eat it up.",
+                "--[1]-- is so old, her social security number is a single digit.",
+                "--[1]--’s handwriting is so messy, her schoolteachers had to hire someone to decode her homework.",
+                "--[1]-- is so tiny, when she visited Santa, he mistook her for one of his elves.",
+                "--[1]-- is so tiny, her whole body fit into her diver’s license photo.",
+                "--[1]--’s hair is so long, she gives Rapunzel styling tips.",
+                "--[1]-- is so protective, she puts Band-Aids on you before you even get hurt.",
+                "--[1]-- is so clumsy, she tripped over your wireless internet network.",
+                "--[1]-- is so fat, people say she’s talking in surround sound.",
+                "--[1]-- is so dumb, she thought putting two quarters in her ears meant she was listening to 50 Cent.",
+                "--[1]-- is so bad at reading directions, when the sign said “Disneyland left”, she turned around and went home.",
+                "--[1]-- is so old, the antique store wanted to keep her as a mannequin.",
+                "--[1]-- is so old, she has a photo of Moses in her yearbook.",
+                "--[1]-- is so old, her Bible is autographed.",
+                "--[1]-- is so clumsy, she tripped over a cordless phone.",
+                "--[1]-- is so tiny, she was the first to ever use Chapstick as deodorant.",
+                "--[1]-- is so dumb, when I said her drink was on the house, she ran outside to grab a ladder.",
+                "--[1]-- is so dumb, she ordered airbags to be put in her computer in case it crashed.",
+                "--[1]-- is so old, she knew Burger King when he was only a prince.",
+                "--[1]-- is so old, her driver’s license is written in hieroglyphics."
             ]
         }
     ]
