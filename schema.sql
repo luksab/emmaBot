@@ -1,6 +1,6 @@
-DROP TABLE IF EXISTS users;
+-- DROP TABLE IF EXISTS UserIDGuildID;
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS UserIDGuildID (
   user_id BIGINT NOT NULL,
   guild_id BIGINT NOT NULL,
   primary key (user_id, guild_id)
