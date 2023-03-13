@@ -33,7 +33,11 @@ pub struct Joke {
 
 pub fn load_config() -> Config {
     let file_path = "config.json".to_owned();
-    let contents = fs::read_to_string(file_path).expect("Couldn't find or load that file.");
+    // load from current directory or the data directory
+    let contents = fs::read_to_string(file_path).unwrap_or_else(|_| {
+        fs::read_to_string("data/config.json")
+            .expect("Failed to read config file. Please create a config.json file.")
+    });
     let p: Config = serde_json::from_str(&contents).expect("Failed to parse json");
     p
 }
