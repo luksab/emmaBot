@@ -320,6 +320,11 @@ async fn serenity(
     #[shuttle_secrets::Secrets] secret_store: SecretStore,
     #[shuttle_shared_db::Postgres] pool: PgPool,
 ) -> shuttle_service::ShuttleSerenity {
+    // register custom panic handler to log panics
+    std::panic::set_hook(Box::new(|panic_info| {
+        error!("Panic: {:?}", panic_info);
+    }));
+
     pool.execute(include_str!("../schema.sql"))
         .await
         .expect("Error creating schema");
