@@ -349,8 +349,11 @@ async fn main() {
         .await
         .expect("Error creating schema");
 
-    // load the discord token from the token file
-    let token = std::fs::read_to_string("token").expect("Error reading token");
+    // load the discord token from the token file either in the current directory or data/token
+    let token = std::fs::read_to_string("token").unwrap_or_else(|_| {
+        std::fs::read_to_string("data/token")
+            .expect("Could not find token file in current directory or data/token")
+    });
 
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::GUILD_MESSAGES
