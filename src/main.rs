@@ -1,5 +1,4 @@
 use crate::application::interaction::{Interaction, InteractionResponseType};
-use anyhow::anyhow;
 use config::Config;
 use rand::seq::SliceRandom;
 use serenity::model::application::command::Command;
@@ -8,9 +7,11 @@ use serenity::model::gateway::Ready;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
 use serenity::{async_trait, model::application};
-use shuttle_secrets::SecretStore;
-use sqlx::{Executor, PgPool};
-use tracing::{error, info};
+use sqlx::migrate::MigrateDatabase;
+use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::{Executor, Sqlite, SqlitePool};
+use tracing::{error, info, warn, Level};
+use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
 
 mod config;
 
@@ -19,7 +20,7 @@ struct Bot;
 #[derive(sqlx::FromRow, Debug)]
 struct UserIDGuildID {
     user_id: i64,
-    guild_id: i64,
+    _guild_id: i64,
 }
 
 #[async_trait]
@@ -292,7 +293,7 @@ impl EventHandler for Bot {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-        // //vcping with /
+        // register commands
         let commands = Command::set_global_application_commands(&ctx.http, |commands| {
             commands.create_application_command(|command| {
                 command.name("vcping").description(
@@ -308,33 +309,48 @@ impl EventHandler for Bot {
 }
 
 struct State {
-    pool: PgPool,
+    pool: SqlitePool,
 }
 
 impl TypeMapKey for State {
     type Value = State;
 }
 
-#[shuttle_service::main]
-async fn serenity(
-    #[shuttle_secrets::Secrets] secret_store: SecretStore,
-    #[shuttle_shared_db::Postgres] pool: PgPool,
-) -> shuttle_service::ShuttleSerenity {
-    // register custom panic handler to log panics
-    std::panic::set_hook(Box::new(|panic_info| {
-        error!("Panic: {:?}", panic_info);
-    }));
+const DB_URL: &str = "sqlite://sqlite.db";
+
+#[tokio::main]
+async fn main() {
+    let filter = tracing_subscriber::filter::Targets::new()
+        .with_default(Level::DEBUG)
+        .with_target("sqlx", Level::WARN);
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(tracing_subscriber::fmt::Layer::default());
+
+    // make a sqlx sqlite pool
+    if !Sqlite::database_exists(DB_URL).await.unwrap_or(false) {
+        warn!("Creating database {}", DB_URL);
+        match Sqlite::create_database(DB_URL).await {
+            Ok(_) => info!("Create db success"),
+            Err(error) => panic!("error: {}", error),
+        }
+    } else {
+        info!("Database already exists");
+    }
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect(DB_URL)
+        .await
+        .expect("Error connecting to database");
 
     pool.execute(include_str!("../schema.sql"))
         .await
         .expect("Error creating schema");
 
-    // Get the discord token set in `Secrets.toml`
-    let token = if let Some(token) = secret_store.get("DISCORD_TOKEN") {
-        token
-    } else {
-        return Err(anyhow!("'DISCORD_TOKEN' was not found").into());
-    };
+    // load the discord token from the token file
+    let token = std::fs::read_to_string("token").expect("Error reading token");
 
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::GUILD_MESSAGES
@@ -345,12 +361,15 @@ async fn serenity(
     let state = State { pool };
     let config = config::load_config();
 
-    let client = Client::builder(&token, intents)
+    let mut client = Client::builder(&token, intents)
         .event_handler(Bot)
         .type_map_insert::<State>(state)
         .type_map_insert::<Config>(config)
         .await
         .expect("Err creating client");
 
-    Ok(client)
+    // start listening for events by starting a single shard
+    if let Err(why) = client.start().await {
+        println!("An error occurred while running the client: {:?}", why);
+    }
 }
