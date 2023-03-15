@@ -20,7 +20,7 @@ struct Bot;
 #[derive(sqlx::FromRow, Debug)]
 struct UserIDGuildID {
     user_id: i64,
-    _guild_id: i64,
+    guild_id: i64,
 }
 
 #[async_trait]
