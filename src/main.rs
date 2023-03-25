@@ -1,17 +1,20 @@
+use std::collections::HashSet;
+use std::time::Duration;
+
 use crate::application::interaction::{Interaction, InteractionResponseType};
 use config::Config;
+use lukas_bot::get_numer_of_users_in_channel;
 use rand::seq::SliceRandom;
 use serenity::model::application::command::Command;
-use serenity::model::channel::Message;
-use serenity::model::gateway::Ready;
-use serenity::model::voice::VoiceState;
+use serenity::model::prelude::ChannelId;
+use serenity::model::{channel::Message, gateway::Ready, voice::VoiceState};
 use serenity::prelude::*;
 use serenity::{async_trait, model::application};
 use sqlx::migrate::MigrateDatabase;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Executor, Sqlite, SqlitePool};
-use tracing::{error, info, warn, Level};
-use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
+use tracing::{debug, error, info, warn, Level};
+use tracing_subscriber::prelude::*;
 
 mod config;
 
@@ -136,6 +139,7 @@ impl EventHandler for Bot {
     }
 
     async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
+        debug!("voice_state_update: {:?} {:?}", old, new);
         let channel = match new.channel_id {
             Some(channel_id) => channel_id.to_channel(&ctx.http).await.unwrap(),
             None => old
@@ -149,21 +153,27 @@ impl EventHandler for Bot {
         };
 
         let channel = channel.guild().unwrap();
-        let number_of_users_in_channel = match new.channel_id {
-            Some(channel_id) => match channel.members(&ctx.cache).await {
-                Ok(members) => members.len(),
-                Err(_) => {
-                    // get members from api
-                    let channel = channel_id.to_channel(&ctx.http).await.unwrap();
-                    let channel = channel.guild().unwrap();
-                    let members = channel.members(&ctx.cache).await.unwrap();
-                    members.len()
-                }
-            },
-            None => 0,
-        };
+        let number_of_users_in_channel = get_numer_of_users_in_channel(&ctx, &new).await;
         // if user joins a voice channel
         if old.is_none() && new.channel_id.is_some() && number_of_users_in_channel == 1 {
+            debug!("User joined channel");
+            // wait one minute
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            debug!("Checking if user is still in channel");
+            // check if user is still in the channel
+            let number_of_users_in_channel = get_numer_of_users_in_channel(&ctx, &new).await;
+            if number_of_users_in_channel == 0 {
+                // everyone left the channel
+                return;
+            }
+            // add channel to map
+            let mut data = ctx.data.write().await;
+            let state = data.get_mut::<State>().unwrap();
+            state
+                .occupied_channels
+                .insert(new.channel_id.unwrap());
+            drop(state);
+            drop(data);
             let guild_id = new.guild_id.unwrap();
 
             let to_ping_user_ids: Vec<UserIDGuildID> =
@@ -200,7 +210,18 @@ impl EventHandler for Bot {
                                     a.name(new.member.as_ref().unwrap().display_name())
                                         // .url("https://discord.gg/invite")
                                         .icon_url(
-                                            new.member.as_ref().unwrap().user.avatar_url().unwrap(),
+                                            new.member
+                                                .as_ref()
+                                                .unwrap()
+                                                .user
+                                                .avatar_url()
+                                                .unwrap_or(
+                                                    new.member
+                                                        .as_ref()
+                                                        .unwrap()
+                                                        .user
+                                                        .default_avatar_url(),
+                                                ),
                                         )
                                 })
                                 .description(format!(
@@ -230,6 +251,15 @@ impl EventHandler for Bot {
                 if !channel.members(&ctx.cache).await.unwrap().is_empty() {
                     return;
                 }
+                // remove channel from map
+                let mut data = ctx.data.write().await;
+                let state = data.get_mut::<State>().unwrap();
+                let was_removed = state.occupied_channels.remove(&channel_id);
+                if !was_removed {
+                    return;
+                }
+                drop(state);
+                drop(data);
                 let guild_id = new.guild_id.unwrap();
 
                 let to_ping_user_ids: Vec<UserIDGuildID> =
@@ -258,17 +288,21 @@ impl EventHandler for Bot {
                         .direct_message(&ctx.http, |m| {
                             m.add_embed(|e| {
                                 e.title(new.guild_id.unwrap().name(&ctx.cache).unwrap())
-                                    .url("https://discord.gg/invite")
                                     .author(|a| {
                                         a.name(new.member.as_ref().unwrap().display_name())
-                                            .url("https://discord.gg/invite")
                                             .icon_url(
                                                 new.member
                                                     .as_ref()
                                                     .unwrap()
                                                     .user
                                                     .avatar_url()
-                                                    .unwrap(),
+                                                    .unwrap_or(
+                                                        new.member
+                                                            .as_ref()
+                                                            .unwrap()
+                                                            .user
+                                                            .default_avatar_url(),
+                                                    ),
                                             )
                                     })
                                     .description(format!(
@@ -315,6 +349,7 @@ impl EventHandler for Bot {
 
 struct State {
     pool: SqlitePool,
+    occupied_channels: HashSet<ChannelId>,
 }
 
 impl TypeMapKey for State {
@@ -327,11 +362,20 @@ const DB_URL: &str = "sqlite://sqlite.db";
 async fn main() {
     let filter = tracing_subscriber::filter::Targets::new()
         .with_default(Level::DEBUG)
-        .with_target("sqlx", Level::WARN);
+        .with_target("sqlx", Level::WARN)
+        .with_target("h2", Level::WARN)
+        .with_target("hyper", Level::WARN)
+        .with_target("reqwest", Level::WARN)
+        .with_target("serenity", Level::WARN)
+        .with_target("tokio", Level::WARN)
+        .with_target("rustls", Level::WARN);
 
     tracing_subscriber::registry()
         .with(filter)
-        .with(tracing_subscriber::fmt::Layer::default());
+        .with(tracing_subscriber::fmt::Layer::default())
+        .init();
+
+    info!("Starting bot");
 
     // make a sqlx sqlite pool
     if !Sqlite::database_exists(DB_URL).await.unwrap_or(false) {
@@ -366,7 +410,10 @@ async fn main() {
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_VOICE_STATES;
 
-    let state = State { pool };
+    let state = State {
+        pool,
+        occupied_channels: HashSet::new(),
+    };
     let config = config::load_config();
 
     let mut client = Client::builder(&token, intents)
