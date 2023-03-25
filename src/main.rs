@@ -248,6 +248,11 @@ impl EventHandler for Bot {
                             ctx.http.get_user(user_id as u64).await.unwrap()
                         }
                     };
+                    // don't send message to user who left
+                    if user_id == new.user_id.0 as i64 {
+                        continue;
+                    }
+
                     let channel_name = channel_id.name(&ctx.cache).await.unwrap();
                     if let Err(e) = user
                         .direct_message(&ctx.http, |m| {
