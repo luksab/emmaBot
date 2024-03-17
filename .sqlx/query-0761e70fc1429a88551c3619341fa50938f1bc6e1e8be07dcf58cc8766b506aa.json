@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE UserIDGuildID SET disconnect_message = $1 WHERE user_id = $2 AND guild_id = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "0761e70fc1429a88551c3619341fa50938f1bc6e1e8be07dcf58cc8766b506aa"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO UserIDGuildID (user_id, guild_id, disconnect_message) VALUES ($1, $2, $3)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "fe1ad783ff0f0689d657b83ee1794011e9327054dfb66caa617ab75e0b2d355b"
+}

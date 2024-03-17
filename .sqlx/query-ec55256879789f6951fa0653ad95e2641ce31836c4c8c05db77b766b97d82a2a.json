@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM UserIDGuildID WHERE user_id = $1 AND guild_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "ec55256879789f6951fa0653ad95e2641ce31836c4c8c05db77b766b97d82a2a"
+}

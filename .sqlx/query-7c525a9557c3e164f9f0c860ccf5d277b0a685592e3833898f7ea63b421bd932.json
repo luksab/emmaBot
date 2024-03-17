@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT * FROM UserIDGuildID WHERE guild_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id",
+        "ordinal": 0,
+        "type_info": "Int64"
+      },
+      {
+        "name": "guild_id",
+        "ordinal": 1,
+        "type_info": "Int64"
+      },
+      {
+        "name": "disconnect_message",
+        "ordinal": 2,
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "7c525a9557c3e164f9f0c860ccf5d277b0a685592e3833898f7ea63b421bd932"
+}

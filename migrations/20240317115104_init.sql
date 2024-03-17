@@ -1,4 +1,4 @@
--- DROP TABLE IF EXISTS UserIDGuildID;
+-- Add migration script here
 
 CREATE TABLE IF NOT EXISTS UserIDGuildID (
   user_id BIGINT NOT NULL,

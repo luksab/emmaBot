@@ -5,6 +5,6 @@ services:
     build: .
     restart: unless-stopped
     volumes:
-        - ${PWD}/data:/data
-    working_dir: /data
-    command: lukas-bot
+        - ${PWD}/data:/app/data
+    env_file:
+      - .env

@@ -5,14 +5,15 @@ use crate::application::interaction::{Interaction, InteractionResponseType};
 use config::Config;
 use lukas_bot::get_numer_of_users_in_channel;
 use rand::seq::SliceRandom;
-use serenity::model::application::command::Command;
+use serde::{Deserialize, Serialize};
+use serenity::model::application::command::{Command, CommandOptionType};
 use serenity::model::prelude::ChannelId;
 use serenity::model::{channel::Message, gateway::Ready, voice::VoiceState};
 use serenity::prelude::*;
 use serenity::{async_trait, model::application};
 use sqlx::migrate::MigrateDatabase;
 use sqlx::sqlite::SqlitePoolOptions;
-use sqlx::{Executor, Sqlite, SqlitePool};
+use sqlx::{Sqlite, SqlitePool};
 use tracing::{debug, error, info, warn, Level};
 use tracing_subscriber::prelude::*;
 
@@ -20,10 +21,11 @@ mod config;
 
 struct Bot;
 
-#[derive(sqlx::FromRow, Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 struct UserIDGuildID {
     user_id: i64,
     guild_id: i64,
+    disconnect_message: Option<bool>,
 }
 
 #[async_trait]
@@ -32,6 +34,53 @@ impl EventHandler for Bot {
         // check that I didn't sent the message
         if msg.author.bot {
             return;
+        }
+        if msg.author.id
+            == std::env::var("OWNER_ID")
+                .unwrap()
+                .parse::<serenity::model::id::UserId>()
+                .unwrap()
+        {
+            if msg.content == "$export" {
+                let data = ctx.data.read().await;
+                let state = data.get::<State>().unwrap();
+                let pool = &state.pool;
+                // read all user_id_guild_id
+                let user_id_guild_id: Vec<UserIDGuildID> =
+                    sqlx::query_as!(UserIDGuildID, "SELECT * FROM UserIDGuildID")
+                        .fetch_all(pool)
+                        .await
+                        .unwrap();
+                // export to json
+                let json = serde_json::to_string(&user_id_guild_id).unwrap();
+                // send json to user
+                msg.channel_id.say(&ctx.http, json).await.unwrap();
+            } else if msg.content.starts_with("$import") {
+                let data = ctx.data.read().await;
+                let state = data.get::<State>().unwrap();
+                let pool = &state.pool;
+                let json = msg.content.replace("$import", "");
+                let user_id_guild_id: Vec<UserIDGuildID> =
+                    serde_json::from_str(&json).expect("Failed to parse json");
+                for user_id_guild_id in &user_id_guild_id {
+                    sqlx::query!(
+                        "INSERT INTO UserIDGuildID (user_id, guild_id, disconnect_message) VALUES ($1, $2, $3)",
+                        user_id_guild_id.user_id,
+                        user_id_guild_id.guild_id,
+                        user_id_guild_id.disconnect_message
+                    )
+                    .execute(pool)
+                    .await
+                    .unwrap();
+                }
+                msg.channel_id
+                    .say(
+                        &ctx.http,
+                        format!("Imported {} rows", user_id_guild_id.len()),
+                    )
+                    .await
+                    .unwrap();
+            }
         }
         let jokes = ctx.data.read().await.get::<Config>().unwrap().jokes.clone();
 
@@ -83,16 +132,24 @@ impl EventHandler for Bot {
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::ApplicationCommand(command) = interaction {
-            let user_id = command.member.as_ref().unwrap().user.id;
+            let user_id = command.member.as_ref().unwrap().user.id.0 as i64;
             let message_text = match command.data.name.as_str() {
                 "vcping" => {
-                    let guild_id = command.guild_id.unwrap();
+                    // get command options
+                    let disconnect_message = command
+                        .data
+                        .options
+                        .iter()
+                        .find(|option| option.name == "disconnect-message")
+                        .and_then(|option| option.clone().value.unwrap().as_bool());
+                    let guild_id = command.guild_id.unwrap().0 as i64;
                     // let guild = guild_id.to_partial_guild(&ctx.http).await.unwrap();
-                    let user_id_exists: Option<UserIDGuildID> = sqlx::query_as(
+                    let user_id_exists: Option<UserIDGuildID> = sqlx::query_as!(
+                        UserIDGuildID,
                         "SELECT * FROM UserIDGuildID WHERE user_id = $1 AND guild_id = $2",
+                        user_id,
+                        guild_id
                     )
-                    .bind(user_id.0 as i64)
-                    .bind(guild_id.0 as i64)
                     .fetch_optional(&ctx.data.read().await.get::<State>().unwrap().pool)
                     .await
                     .unwrap();
@@ -100,27 +157,43 @@ impl EventHandler for Bot {
                     // add user to map, if they are not already in it
                     // remove user from map, if they are already in it
                     if user_id_exists.is_none() {
-                        sqlx::query(
-                            "INSERT INTO UserIDGuildID (user_id, guild_id) VALUES ($1, $2)",
+                        sqlx::query!(
+                            "INSERT INTO UserIDGuildID (user_id, guild_id, disconnect_message) VALUES ($1, $2, $3)",
+                            user_id,
+                            guild_id,
+                            disconnect_message
                         )
-                        .bind(user_id.0 as i64)
-                        .bind(guild_id.0 as i64)
                         .execute(&ctx.data.read().await.get::<State>().unwrap().pool)
                         .await
                         .unwrap();
 
                         "You have been added to the ping list!"
                     } else {
-                        sqlx::query(
-                            "DELETE FROM UserIDGuildID WHERE user_id = $1 AND guild_id = $2",
-                        )
-                        .bind(user_id.0 as i64)
-                        .bind(guild_id.0 as i64)
-                        .execute(&ctx.data.read().await.get::<State>().unwrap().pool)
-                        .await
-                        .unwrap();
-                        // send message to user
-                        "You have been removed from the ping list!"
+                        // check, if the user wants to change the disconnect message setting
+                        if let Some(disconnect_message) = disconnect_message {
+                            sqlx::query!(
+                                "UPDATE UserIDGuildID SET disconnect_message = $1 WHERE user_id = $2 AND guild_id = $3",
+                                disconnect_message,
+                                user_id,
+                                guild_id
+                            )
+                            .execute(&ctx.data.read().await.get::<State>().unwrap().pool)
+                            .await
+                            .unwrap();
+                            "Your disconnect message setting has been updated!"
+                        } else {
+                            // remove user from map
+                            sqlx::query!(
+                                "DELETE FROM UserIDGuildID WHERE user_id = $1 AND guild_id = $2",
+                                user_id,
+                                guild_id
+                            )
+                            .execute(&ctx.data.read().await.get::<State>().unwrap().pool)
+                            .await
+                            .unwrap();
+                            // send message to user
+                            "You have been removed from the ping list!"
+                        }
                     }
                 }
 
@@ -139,7 +212,7 @@ impl EventHandler for Bot {
     }
 
     async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
-        debug!("voice_state_update: {:?} {:?}", old, new);
+        debug!("voice_state_update: \nold: {:?} \nnew: {:?}", old, new);
         let channel = match new.channel_id {
             Some(channel_id) => channel_id.to_channel(&ctx.http).await.unwrap(),
             None => old
@@ -169,19 +242,18 @@ impl EventHandler for Bot {
             // add channel to map
             let mut data = ctx.data.write().await;
             let state = data.get_mut::<State>().unwrap();
-            state
-                .occupied_channels
-                .insert(new.channel_id.unwrap());
-            drop(state);
+            state.occupied_channels.insert(new.channel_id.unwrap());
             drop(data);
-            let guild_id = new.guild_id.unwrap();
+            let guild_id = new.guild_id.unwrap().0 as i64;
 
-            let to_ping_user_ids: Vec<UserIDGuildID> =
-                sqlx::query_as("SELECT * FROM UserIDGuildID WHERE guild_id = $1")
-                    .bind(guild_id.0 as i64)
-                    .fetch_all(&ctx.data.read().await.get::<State>().unwrap().pool)
-                    .await
-                    .unwrap();
+            let to_ping_user_ids: Vec<UserIDGuildID> = sqlx::query_as!(
+                UserIDGuildID,
+                "SELECT * FROM UserIDGuildID WHERE guild_id = $1",
+                guild_id
+            )
+            .fetch_all(&ctx.data.read().await.get::<State>().unwrap().pool)
+            .await
+            .unwrap();
 
             for user_id_guild_id in to_ping_user_ids {
                 // check that user is not in the channel
@@ -258,18 +330,23 @@ impl EventHandler for Bot {
                 if !was_removed {
                     return;
                 }
-                drop(state);
                 drop(data);
-                let guild_id = new.guild_id.unwrap();
-
-                let to_ping_user_ids: Vec<UserIDGuildID> =
-                    sqlx::query_as("SELECT * FROM UserIDGuildID WHERE guild_id = $1")
-                        .bind(guild_id.0 as i64)
-                        .fetch_all(&ctx.data.read().await.get::<State>().unwrap().pool)
-                        .await
-                        .unwrap();
+                let guild_id = new.guild_id.unwrap().0 as i64;
+                let to_ping_user_ids: Vec<UserIDGuildID> = sqlx::query_as!(
+                    UserIDGuildID,
+                    "SELECT * FROM UserIDGuildID WHERE guild_id = $1",
+                    guild_id
+                )
+                .fetch_all(&ctx.data.read().await.get::<State>().unwrap().pool)
+                .await
+                .unwrap();
 
                 for user_id_guild_id in to_ping_user_ids {
+                    let send_disconnect_message =
+                        user_id_guild_id.disconnect_message.unwrap_or(true);
+                    if !send_disconnect_message {
+                        continue;
+                    }
                     let user_id = user_id_guild_id.user_id;
                     let user = match ctx.cache.user(user_id as u64) {
                         Some(user) => user,
@@ -335,9 +412,18 @@ impl EventHandler for Bot {
         // register commands
         let commands = Command::set_global_application_commands(&ctx.http, |commands| {
             commands.create_application_command(|command| {
-                command.name("vcping").description(
-                    "Get added to the list of UserIDGuildID to ping when someone starts a VC",
-                )
+                command
+                    .name("vcping")
+                    .description(
+                        "Get added to the list of UserIDGuildID to ping when someone starts a VC",
+                    )
+                    .create_option(|option| {
+                        option
+                            .name("disconnect-message")
+                            .description("Also send a message when someone disconnects from VC")
+                            .kind(CommandOptionType::Boolean)
+                            .required(false)
+                    })
             })
         })
         .await
@@ -356,10 +442,9 @@ impl TypeMapKey for State {
     type Value = State;
 }
 
-const DB_URL: &str = "sqlite://sqlite.db";
-
 #[tokio::main]
 async fn main() {
+    dotenv::dotenv().ok();
     let filter = tracing_subscriber::filter::Targets::new()
         .with_default(Level::DEBUG)
         .with_target("sqlx", Level::WARN)
@@ -377,10 +462,14 @@ async fn main() {
 
     info!("Starting bot");
 
+    let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    println!("Database url: {}", db_url);
+    // print pwd
+    println!("Current directory: {:?}", std::env::current_dir().unwrap());
     // make a sqlx sqlite pool
-    if !Sqlite::database_exists(DB_URL).await.unwrap_or(false) {
-        warn!("Creating database {}", DB_URL);
-        match Sqlite::create_database(DB_URL).await {
+    if !Sqlite::database_exists(&db_url).await.unwrap_or(false) {
+        warn!("Creating database {}", db_url);
+        match Sqlite::create_database(&db_url).await {
             Ok(_) => info!("Create db success"),
             Err(error) => panic!("error: {}", error),
         }
@@ -390,19 +479,13 @@ async fn main() {
 
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
-        .connect(DB_URL)
+        .connect(&db_url)
         .await
         .expect("Error connecting to database");
 
-    pool.execute(include_str!("../schema.sql"))
-        .await
-        .expect("Error creating schema");
+    sqlx::migrate!().run(&pool).await.unwrap();
 
-    // load the discord token from the token file either in the current directory or data/token
-    let token = std::fs::read_to_string("token").unwrap_or_else(|_| {
-        std::fs::read_to_string("data/token")
-            .expect("Could not find token file in current directory or data/token")
-    });
+    let token = std::env::var("DISCORD_TOKEN").expect("DISCORD_TOKEN must be set");
 
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::GUILD_MESSAGES
