@@ -113,7 +113,7 @@ async fn main() {
         .with(tracing_subscriber::fmt::Layer::default())
         .init();
 
-    info!("Starting bot");
+    info!("Starting bot version {}", env!("CARGO_PKG_VERSION"));
 
     let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     println!("Database url: {}", db_url);
