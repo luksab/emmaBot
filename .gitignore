@@ -3,3 +3,4 @@ Secrets.toml
 data/sqlite.db*
 data/token
 *.sqlite
+.env
