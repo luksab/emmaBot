@@ -2,7 +2,8 @@ version: "3.8"
 
 services:
   lukas_bot:
-    build: .
+    # build: .
+    image: ghcr.io/luksab/lukas-bot:latest
     restart: unless-stopped
     volumes:
         - ${PWD}/data:/app/data
