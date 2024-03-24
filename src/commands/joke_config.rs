@@ -5,9 +5,10 @@ use serenity::{
     },
 };
 
-use crate::State;
+use crate::{JokeConfig, State};
 
 pub async fn handle_joke_config_command(ctx: &Context, command: &ApplicationCommandInteraction) {
+    let guild_id = command.guild_id.unwrap().0 as i64;
     // get command options
     let chance_option = command
         .data
@@ -18,7 +19,6 @@ pub async fn handle_joke_config_command(ctx: &Context, command: &ApplicationComm
     let mut message_text: Vec<String> = Vec::new();
     if let Some(chance) = chance_option {
         // get guild id
-        let guild_id = command.guild_id.unwrap().0 as i64;
         let chance = chance as f64 / 100.0;
         // update or insert chance
         sqlx::query!(
@@ -29,10 +29,21 @@ pub async fn handle_joke_config_command(ctx: &Context, command: &ApplicationComm
         .execute(&ctx.data.read().await.get::<State>().unwrap().pool)
         .await
         .unwrap();
-        message_text.push(format!(
-            "The chance for a joke has been set to {}%",
-            chance * 100.0
-        ));
+    }
+
+    // get current config
+    let config = sqlx::query_as!(
+        JokeConfig,
+        "SELECT * FROM JokeConfig WHERE guild_id = $1",
+        guild_id
+    )
+    .fetch_one(&ctx.data.read().await.get::<State>().unwrap().pool)
+    .await
+    .ok();
+    if let Some(config) = config {
+        message_text.push(format!("Chance: {}%", config.chance * 100.0));
+    } else {
+        message_text.push("No config found".to_string());
     }
 
     command
