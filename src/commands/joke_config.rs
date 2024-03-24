@@ -1,21 +1,19 @@
 use serenity::{
+    all::{CommandInteraction, CreateInteractionResponse, CreateInteractionResponseMessage},
     client::Context,
-    model::application::interaction::{
-        application_command::ApplicationCommandInteraction, InteractionResponseType,
-    },
 };
 
 use crate::{JokeConfig, State};
 
-pub async fn handle_joke_config_command(ctx: &Context, command: &ApplicationCommandInteraction) {
-    let guild_id = command.guild_id.unwrap().0 as i64;
+pub async fn handle_joke_config_command(ctx: &Context, command: &CommandInteraction) {
+    let guild_id = command.guild_id.unwrap().get() as i64;
     // get command options
     let chance_option = command
         .data
         .options
         .iter()
         .find(|option| option.name == "chance")
-        .and_then(|option| option.clone().value.unwrap().as_i64());
+        .and_then(|option| option.clone().value.as_i64());
     let mut message_text: Vec<String> = Vec::new();
     if let Some(chance) = chance_option {
         // get guild id
@@ -47,11 +45,12 @@ pub async fn handle_joke_config_command(ctx: &Context, command: &ApplicationComm
     }
 
     command
-        .create_interaction_response(&ctx.http, |response| {
-            response
-                .kind(InteractionResponseType::ChannelMessageWithSource)
-                .interaction_response_data(|message| message.content(message_text.join("\n")))
-        })
+        .create_response(
+            &ctx,
+            CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new().content(message_text.join("\n")),
+            ),
+        )
         .await
         .unwrap();
 }

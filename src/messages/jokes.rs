@@ -10,7 +10,7 @@ pub struct JokeConfig {
 
 pub async fn handle_jokes_message(ctx: &Context, msg: &Message) {
     // check db for chance of making a joke
-    let gid = msg.guild_id.unwrap().0 as i64;
+    let gid = msg.guild_id.unwrap().get() as i64;
     let chance = sqlx::query_as!(
         JokeConfig,
         "SELECT * FROM JokeConfig WHERE guild_id = $1",

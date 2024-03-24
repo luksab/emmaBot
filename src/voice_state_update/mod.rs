@@ -1,11 +1,12 @@
-use serenity::model::voice::VoiceState;
+use serenity::all::{CreateEmbed, CreateEmbedAuthor, CreateInvite, CreateMessage};
 use serenity::prelude::*;
+use serenity::{all::UserId, model::voice::VoiceState};
 use std::time::Duration;
 use tracing::{debug, error};
 
 use crate::{get_numer_of_users_in_channel, State, UserIDGuildID};
 
-pub async fn handle_voice_state_update(ctx: Context, old: Option<VoiceState>, new: VoiceState) {
+pub async fn handle_voice_state_update(ctx: &Context, old: Option<VoiceState>, new: VoiceState) {
     debug!("voice_state_update: \nold: {:?} \nnew: {:?}", old, new);
     let channel = match new.channel_id {
         Some(channel_id) => channel_id.to_channel(&ctx.http).await.unwrap(),
@@ -20,7 +21,7 @@ pub async fn handle_voice_state_update(ctx: Context, old: Option<VoiceState>, ne
     };
 
     let channel = channel.guild().unwrap();
-    let number_of_users_in_channel = get_numer_of_users_in_channel(&ctx, &new).await;
+    let number_of_users_in_channel = get_numer_of_users_in_channel(ctx, &new).await;
     // if user joins a voice channel
     if old.is_none() && new.channel_id.is_some() && number_of_users_in_channel == 1 {
         debug!("User joined channel");
@@ -28,7 +29,7 @@ pub async fn handle_voice_state_update(ctx: Context, old: Option<VoiceState>, ne
         tokio::time::sleep(Duration::from_secs(60)).await;
         debug!("Checking if user is still in channel");
         // check if user is still in the channel
-        let number_of_users_in_channel = get_numer_of_users_in_channel(&ctx, &new).await;
+        let number_of_users_in_channel = get_numer_of_users_in_channel(ctx, &new).await;
         if number_of_users_in_channel == 0 {
             // everyone left the channel
             return;
@@ -38,7 +39,7 @@ pub async fn handle_voice_state_update(ctx: Context, old: Option<VoiceState>, ne
         let state = data.get_mut::<State>().unwrap();
         state.occupied_channels.insert(new.channel_id.unwrap());
         drop(data);
-        let guild_id = new.guild_id.unwrap().0 as i64;
+        let guild_id = new.guild_id.unwrap().get() as i64;
 
         let to_ping_user_ids: Vec<UserIDGuildID> = sqlx::query_as!(
             UserIDGuildID,
@@ -51,51 +52,55 @@ pub async fn handle_voice_state_update(ctx: Context, old: Option<VoiceState>, ne
 
         for user_id_guild_id in to_ping_user_ids {
             // check that user is not in the channel
-            if user_id_guild_id.user_id == new.user_id.0 as i64 {
+            if user_id_guild_id.user_id == new.user_id.get() as i64 {
                 continue;
             }
             let user_id = user_id_guild_id.user_id;
-            let user = match ctx.cache.user(user_id as u64) {
+            let user = match ctx.cache.user(user_id as u64).map(|u| u.clone()) {
                 Some(user) => user,
                 None => {
                     // get user from api
-                    ctx.http.get_user(user_id as u64).await.unwrap()
+                    ctx.http
+                        .get_user(UserId::new(user_id as u64))
+                        .await
+                        .unwrap()
                 }
             };
-            let channel_name = new.channel_id.unwrap().name(&ctx.cache).await.unwrap();
+            let channel_name = new.channel_id.unwrap().name(&ctx).await.unwrap();
             let invite = channel
-                .create_invite(&ctx.http, |i| i.max_uses(1))
+                .create_invite(&ctx.http, CreateInvite::new().max_uses(1))
                 .await
                 .unwrap();
+            let guild = &new
+                .guild_id
+                .unwrap()
+                .to_guild_cached(&ctx.cache)
+                .unwrap()
+                .clone();
             if let Err(e) = user
-                .direct_message(&ctx.http, |m| {
-                    m.add_embed(|e| {
-                        e.title(new.guild_id.unwrap().name(&ctx.cache).unwrap())
+                .direct_message(
+                    &ctx.http,
+                    CreateMessage::new().add_embed(
+                        CreateEmbed::new()
+                            .title(new.guild_id.unwrap().name(&ctx.cache).unwrap())
                             .url(invite.url())
-                            .author(|a| {
-                                a.name(new.member.as_ref().unwrap().display_name())
+                            .author(
+                                CreateEmbedAuthor::new(new.member.as_ref().unwrap().display_name())
                                     // .url("https://discord.gg/invite")
                                     .icon_url(
                                         new.member.as_ref().unwrap().user.avatar_url().unwrap_or(
                                             new.member.as_ref().unwrap().user.default_avatar_url(),
                                         ),
-                                    )
-                            })
+                                    ),
+                            )
                             .description(format!(
                                 "{} Started VC in {}",
                                 new.member.as_ref().unwrap().display_name(),
                                 channel_name,
                             ))
-                            .thumbnail(
-                                new.guild_id
-                                    .unwrap()
-                                    .to_guild_cached(&ctx.cache)
-                                    .unwrap()
-                                    .icon_url()
-                                    .unwrap(),
-                            )
-                    })
-                })
+                            .thumbnail(guild.icon_url().unwrap()),
+                    ),
+                )
                 .await
             {
                 error!("Error sending message: {:?}", e);
@@ -105,7 +110,7 @@ pub async fn handle_voice_state_update(ctx: Context, old: Option<VoiceState>, ne
         // if user leaves a voice channel
         if let Some(channel_id) = old.unwrap().channel_id {
             // check that no one is in the channel
-            if !channel.members(&ctx.cache).await.unwrap().is_empty() {
+            if !channel.members(&ctx.cache).unwrap().is_empty() {
                 return;
             }
             // remove channel from map
@@ -116,7 +121,7 @@ pub async fn handle_voice_state_update(ctx: Context, old: Option<VoiceState>, ne
                 return;
             }
             drop(data);
-            let guild_id = new.guild_id.unwrap().0 as i64;
+            let guild_id = new.guild_id.unwrap().get() as i64;
             let to_ping_user_ids: Vec<UserIDGuildID> = sqlx::query_as!(
                 UserIDGuildID,
                 "SELECT * FROM UserIDGuildID WHERE guild_id = $1",
@@ -132,55 +137,52 @@ pub async fn handle_voice_state_update(ctx: Context, old: Option<VoiceState>, ne
                     continue;
                 }
                 let user_id = user_id_guild_id.user_id;
-                let user = match ctx.cache.user(user_id as u64) {
+                let user = match ctx.cache.user(user_id as u64).map(|u| u.clone()) {
                     Some(user) => user,
                     None => {
                         // get user from api
-                        ctx.http.get_user(user_id as u64).await.unwrap()
+                        ctx.http
+                            .get_user(UserId::new(user_id as u64))
+                            .await
+                            .unwrap()
                     }
                 };
                 // don't send message to user who left
-                if user_id == new.user_id.0 as i64 {
+                if user_id == new.user_id.get() as i64 {
                     continue;
                 }
 
-                let channel_name = channel_id.name(&ctx.cache).await.unwrap();
+                let channel_name = channel_id.name(&ctx).await.unwrap();
+                let guild = &new
+                    .guild_id
+                    .unwrap()
+                    .to_guild_cached(&ctx.cache)
+                    .unwrap()
+                    .clone();
                 if let Err(e) = user
-                    .direct_message(&ctx.http, |m| {
-                        m.add_embed(|e| {
-                            e.title(new.guild_id.unwrap().name(&ctx.cache).unwrap())
-                                .author(|a| {
-                                    a.name(new.member.as_ref().unwrap().display_name())
-                                        .icon_url(
-                                            new.member
-                                                .as_ref()
-                                                .unwrap()
-                                                .user
-                                                .avatar_url()
-                                                .unwrap_or(
-                                                    new.member
-                                                        .as_ref()
-                                                        .unwrap()
-                                                        .user
-                                                        .default_avatar_url(),
-                                                ),
-                                        )
-                                })
+                    .direct_message(
+                        &ctx.http,
+                        CreateMessage::new().add_embed(
+                            CreateEmbed::new()
+                                .title(new.guild_id.unwrap().name(&ctx.cache).unwrap())
+                                .author(
+                                    CreateEmbedAuthor::new(
+                                        new.member.as_ref().unwrap().display_name(),
+                                    )
+                                    .icon_url(
+                                        new.member.as_ref().unwrap().user.avatar_url().unwrap_or(
+                                            new.member.as_ref().unwrap().user.default_avatar_url(),
+                                        ),
+                                    ),
+                                )
                                 .description(format!(
                                     "{} Stopped VC in {}",
                                     new.member.as_ref().unwrap().display_name(),
                                     channel_name,
                                 ))
-                                .thumbnail(
-                                    new.guild_id
-                                        .unwrap()
-                                        .to_guild_cached(&ctx.cache)
-                                        .unwrap()
-                                        .icon_url()
-                                        .unwrap(),
-                                )
-                        })
-                    })
+                                .thumbnail(guild.icon_url().unwrap()),
+                        ),
+                    )
                     .await
                 {
                     error!("Error sending message: {:?}", e);

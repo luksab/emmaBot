@@ -1,20 +1,20 @@
 use serenity::{
+    all::{CommandInteraction, CreateInteractionResponse, CreateInteractionResponseMessage},
     client::Context,
-    model::application::interaction::{application_command::ApplicationCommandInteraction, InteractionResponseType},
 };
 
 use crate::{State, UserIDGuildID};
 
-pub async fn handle_vcping_command(ctx: &Context, command: &ApplicationCommandInteraction) {
-    let user_id = command.member.as_ref().unwrap().user.id.0 as i64;
+pub async fn handle_vcping_command(ctx: &Context, command: &CommandInteraction) {
+    let user_id = command.member.as_ref().unwrap().user.id.get() as i64;
     // get command options
     let disconnect_message = command
         .data
         .options
         .iter()
         .find(|option| option.name == "disconnect-message")
-        .and_then(|option| option.clone().value.unwrap().as_bool());
-    let guild_id = command.guild_id.unwrap().0 as i64;
+        .and_then(|option| option.clone().value.as_bool());
+    let guild_id = command.guild_id.unwrap().get() as i64;
     // let guild = guild_id.to_partial_guild(&ctx.http).await.unwrap();
     let user_id_exists: Option<UserIDGuildID> = sqlx::query_as!(
         UserIDGuildID,
@@ -69,11 +69,12 @@ pub async fn handle_vcping_command(ctx: &Context, command: &ApplicationCommandIn
     };
 
     command
-        .create_interaction_response(&ctx.http, |response| {
-            response
-                .kind(InteractionResponseType::ChannelMessageWithSource)
-                .interaction_response_data(|message| message.content(message_text))
-        })
+        .create_response(
+            &ctx,
+            CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new().content(message_text),
+            ),
+        )
         .await
         .unwrap();
 }

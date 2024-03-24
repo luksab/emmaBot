@@ -1,15 +1,11 @@
-use crate::application::interaction::Interaction;
 use lukas_bot::*;
-use serenity::model::application::command::{Command, CommandOptionType};
-use serenity::model::Permissions;
-use serenity::model::{channel::Message, gateway::Ready, voice::VoiceState};
-use serenity::prelude::*;
-use serenity::{async_trait, model::application};
+use serenity::all::*;
+use serenity::async_trait;
 use sqlx::migrate::MigrateDatabase;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::Sqlite;
 use std::collections::HashSet;
-use tracing::{info, warn, Level};
+use tracing::*;
 use tracing_subscriber::prelude::*;
 
 struct Bot;
@@ -34,7 +30,7 @@ impl EventHandler for Bot {
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::ApplicationCommand(command) = interaction {
+        if let Interaction::Command(command) = interaction {
             match command.data.name.as_str() {
                 "vcping" => {
                     handle_vcping_command(&ctx, &command).await;
@@ -49,45 +45,43 @@ impl EventHandler for Bot {
     }
 
     async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
-        handle_voice_state_update(ctx, old, new).await;
+        handle_voice_state_update(&ctx, old, new).await;
     }
 
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
         // register commands
-        let commands = Command::set_global_application_commands(&ctx.http, |commands| {
-            commands
-                .create_application_command(|command| {
-                    command
-                    .name("vcping")
+        let commands = Command::set_global_commands(
+            &ctx.http,
+            vec![
+                CreateCommand::new("vcping")
                     .description(
                         "Get added to the list of UserIDGuildID to ping when someone starts a VC",
                     )
-                    .create_option(|option| {
-                        option
-                            .name("disconnect-message")
-                            .description("Also send a message when someone disconnects from VC")
-                            .kind(CommandOptionType::Boolean)
-                            .required(false)
-                    })
-                })
-                .create_application_command(|command| {
-                    command
-                        .name("joke-config")
-                        .description("Configure how the bot should make jokes")
-                        .default_member_permissions(Permissions::ADMINISTRATOR)
-                        .create_option(|option| {
-                            option
-                                .name("chance")
-                                .description("The chance that the bot will make a joke")
-                                .kind(CommandOptionType::Integer)
-                                .required(false)
-                                .min_int_value(0)
-                                .max_int_value(100)
-                        })
-                })
-        })
+                    .add_option(
+                        CreateCommandOption::new(
+                            CommandOptionType::Boolean,
+                            "disconnect-message",
+                            "Also send a message when someone disconnects from VC",
+                        )
+                        .required(false),
+                    ),
+                CreateCommand::new("joke-config")
+                    .description("Configure how the bot should make jokes")
+                    .default_member_permissions(Permissions::ADMINISTRATOR)
+                    .add_option(
+                        CreateCommandOption::new(
+                            CommandOptionType::Integer,
+                            "chance",
+                            "The chance that the bot will make a joke",
+                        )
+                        .required(false)
+                        .min_int_value(0)
+                        .max_int_value(100),
+                    ),
+            ],
+        )
         .await
         .unwrap();
 
