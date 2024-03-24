@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO JokeConfig (chance, guild_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET chance = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "51637e00be31d685943734b6de848843ce2f6a9dfe7608ef4d601fbff769c75d"
+}
