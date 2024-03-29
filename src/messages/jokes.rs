@@ -23,7 +23,6 @@ pub async fn handle_jokes_message(ctx: &Context, msg: &Message) {
         chance: 1.1,
         guild_id: gid,
     });
-    println!("chance: {}", chance.chance);
 
     if rand::random::<f64>() > chance.chance {
         return;
@@ -32,6 +31,11 @@ pub async fn handle_jokes_message(ctx: &Context, msg: &Message) {
     let jokes = ctx.data.read().await.get::<Config>().unwrap().jokes.clone();
 
     for joke in jokes {
+        if let Some(servers) = joke.servers {
+            if !servers.contains(&msg.guild_id.unwrap()) {
+                continue;
+            }
+        }
         let matches = joke.regex.captures(&msg.content).unwrap();
         if let Some(matches) = matches {
             // replace --[number]-- with the corresponding capture group

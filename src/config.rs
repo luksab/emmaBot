@@ -2,7 +2,7 @@
 use fancy_regex::Regex;
 
 use serde::{Deserialize, Deserializer};
-use serenity::prelude::TypeMapKey;
+use serenity::{all::GuildId, prelude::TypeMapKey};
 use std::fs;
 
 #[derive(Deserialize, Clone)]
@@ -26,6 +26,7 @@ where
 #[derive(Deserialize, Clone, Debug)]
 pub struct Joke {
     pub name: String,
+    pub servers: Option<Vec<GuildId>>,
     #[serde(deserialize_with = "regex_from_str")]
     pub regex: Regex,
     pub message: Vec<String>,
