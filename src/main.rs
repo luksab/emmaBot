@@ -13,10 +13,10 @@ struct Bot;
 #[async_trait]
 impl EventHandler for Bot {
     async fn message(&self, ctx: Context, msg: Message) {
-        // check that I didn't sent the message
-        if msg.author.bot {
+        if !should_respond(&msg) {
             return;
         }
+
         if msg.author.id
             == std::env::var("OWNER_ID")
                 .unwrap()
