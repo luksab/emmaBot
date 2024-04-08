@@ -1,14 +1,15 @@
 pub mod commands;
-pub mod messages;
 pub mod config;
+pub mod messages;
 pub mod voice_state_update;
 
 pub use commands::*;
-pub use messages::*;
 pub use config::*;
+pub use messages::*;
 pub use voice_state_update::*;
 
 use serde::{Deserialize, Serialize};
+use serenity::all::{Message, UserId};
 use serenity::model::id::ChannelId;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
@@ -51,4 +52,23 @@ pub async fn get_numer_of_users_in_channel(ctx: &Context, state: &VoiceState) ->
         },
         None => 0,
     }
+}
+
+pub fn should_respond(msg: &Message) -> bool {
+    const HOOTSIFER_BOT_ID: UserId = UserId::new(896781020056145931);
+
+    // special case for Hootsifer confessions
+    if msg.author.id == HOOTSIFER_BOT_ID
+        && msg.content.contains("Confession")
+        && msg.embeds.is_empty()
+    {
+        return true;
+    }
+
+    // check that a bot didn't sent the message
+    if msg.author.bot {
+        return false;
+    }
+
+    true
 }
