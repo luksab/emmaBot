@@ -1,15 +1,15 @@
 pub mod commands;
-pub mod messages;
 pub mod config;
+pub mod messages;
 pub mod voice_state_update;
 
 pub use commands::*;
-pub use messages::*;
 pub use config::*;
-use serenity::all::{Message, UserId};
+pub use messages::*;
 pub use voice_state_update::*;
 
 use serde::{Deserialize, Serialize};
+use serenity::all::{Message, UserId};
 use serenity::model::id::ChannelId;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
