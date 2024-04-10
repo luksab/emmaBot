@@ -10,6 +10,17 @@
             ]
         },
         {
+            "name": "the car",
+            "regex": "(?i)the car",
+            "message": [
+                "the car!??",
+                "the hit album from arctic monkeys the car?!?!?!?",
+                "Arctic monkeys the car!??",
+                "THE CAR!!?",
+                "https://open.spotify.com/album/2GROf0WKoP5Er2M9RXVNNs?si=aiHO4WdcQmCWPDwV8FsQ1g"
+            ]
+        },
+        {
             "name": "hi-dad",
             "regex": "(?im)(?:^| |\\.)(i(?:['`´‘’]?m| am))(?! (?:i(?:['`´‘’]?m| am) ))((?: [\\w'`´‘’]+){1,3})(?:\\.|\\!|$)",
             "message": [

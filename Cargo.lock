@@ -961,7 +961,7 @@ checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 
 [[package]]
 name = "lukas-bot"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "dotenv",
