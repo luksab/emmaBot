@@ -75,7 +75,11 @@ pub async fn handle_jokes_message(ctx: &Context, msg: &Message) {
                 "--[channel]--",
                 &channel.guild().map(|c| c.name).unwrap_or("DM".to_string()),
             );
-            msg.channel_id.say(&ctx.http, message).await.unwrap();
+            if joke.reply.unwrap_or(false) {
+                msg.reply_ping(&ctx.http, message).await.unwrap();
+            } else {
+                msg.channel_id.say(&ctx.http, message).await.unwrap();
+            }
             break;
         }
     }

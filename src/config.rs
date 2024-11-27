@@ -30,6 +30,7 @@ pub struct Joke {
     #[serde(deserialize_with = "regex_from_str")]
     pub regex: Regex,
     pub message: Vec<String>,
+    pub reply: Option<bool>,
 }
 
 pub fn load_config() -> Config {
