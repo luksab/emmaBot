@@ -1,4 +1,4 @@
-# LukasBot
+# EmmaBot
 
 # Building in docker
 ```
